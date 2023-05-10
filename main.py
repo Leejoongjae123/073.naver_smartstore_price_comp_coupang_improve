@@ -290,7 +290,6 @@ class Thread(QThread):
 
 
             # -----------------실행부위-------------
-
             while True:
                 try:
                     clock_now = datetime.datetime.now()
