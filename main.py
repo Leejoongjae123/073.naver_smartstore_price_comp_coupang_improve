@@ -155,7 +155,7 @@ def load_excel(file_path):
     print("행갯수:", no_row)
     info_list = []
     for i in range(2, no_row + 1):
-        print(i,"번째 행 정보 가져오는 중...")
+        # print(i,"번째 행 정보 가져오는 중...")
         productNo = ws.cell(row=i, column=1).value
         if productNo==None:
             continue
@@ -344,7 +344,7 @@ class Thread(QThread):
                             except:
                                 print("카탈로그 조회 에러로 건너뜀")
                                 print("=================================")
-                                time.sleep(1)
+                                time.sleep(0.5)
                                 continue
                             if productNo == "" or productNo == None:
                                 print("상품번호없어서 넘어감")
@@ -354,7 +354,7 @@ class Thread(QThread):
                             except:
                                 print("토큰 발급 에러로 건너뜀")
                                 print("=================================")
-                                time.sleep(1)
+                                time.sleep(0.5)
                                 continue
                             # print("현재가격찾기")
                             name, current_price = find_price(productNo)
@@ -418,7 +418,12 @@ class Thread(QThread):
                                             print("변경완료")
                                     elif current_price>price_low:
                                         print("1위 뺏기")
-                                        get_token(least_price-price_tic, productNo,self.api_id,self.api_pw)
+                                        if least_price-price_tic<=price_low: # 1위탈환할 때 하한가 보다 낮으면 하한가로 셋팅
+                                            print("하한가까지 밖에 못 내려감")
+                                            price_change=price_low
+                                        else:
+                                            price_change = least_price - price_tic
+                                        get_token(price_change, productNo, self.api_id, self.api_pw)
                                         # print("토큰 발행완료")
                                         change_price(productNo)
                                         print("변경완료")
