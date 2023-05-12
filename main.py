@@ -37,6 +37,9 @@ import bcrypt
 import http.client
 import json
 import pprint
+import firebase_admin
+from firebase_admin import credentials
+from firebase_admin import db
 
 
 def get_token(price, productNo, api_id,api_pw):
@@ -80,8 +83,12 @@ def get_token(price, productNo, api_id,api_pw):
 
     json_new_result = json.loads(result)
     # pprint.pprint(json_new_result)
+    if json_new_result['originProduct']['deliveryInfo']['deliveryCompany']=="":
+        json_new_result['originProduct']['deliveryInfo']['deliveryCompany']="HANJIN"
+    # print("택배사는:",json_new_result['originProduct']['deliveryInfo']['deliveryCompany'])
     origin_price = int(json_new_result['originProduct']['salePrice'])
     json_new_result['originProduct']['salePrice']=price
+    json_new_result['originProduct']['detailContent'] = ""
 
 
     file_path = 'result.json'
@@ -158,13 +165,13 @@ def load_excel(file_path):
         # print(i,"번째 행 정보 가져오는 중...")
         productNo = ws.cell(row=i, column=1).value
         if productNo==None:
-            continue
+            productNo=""
         name = ws.cell(row=i, column=2).value
         if name=="" or name==None:
             break
         url_catalog = ws.cell(row=i, column=3).value
         if url_catalog==None:
-            continue
+            url_catalog=""
         if url_catalog:
             url_catalog=url_catalog.replace("https://search",'https://msearch')
         url_target=ws.cell(row=i, column=4).value
@@ -259,7 +266,7 @@ def load_store(file_path):
     print("행갯수:", no_row)
     info_list = []
     for i in range(2, no_row + 1):
-        print(i, "번째 행 정보 가져오는 중...")
+        # print(i, "번째 행 정보 가져오는 중...")
         storeName = ws.cell(row=i, column=13).value
         if storeName == "" or storeName == None:
             break
@@ -268,10 +275,41 @@ def load_store(file_path):
     print("exception_list:", info_list)
     return info_list
 
+def get_key(first_flag):
+    print("111")
+    if first_flag==True:
+        secret={
+          "type": "service_account",
+          "project_id": "hanbaik",
+          "private_key_id": "14ac8e67260883ee2c095ab58e32b27c41df23dd",
+          "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDbX5A3/CzD78yf\n68NUAGB8fGyDAwY8wk2ngS2aYHNCNsnk2MVJQtCZTEo9PaRGG+xrlXKpJBMFQdmZ\nIctMpff9E+q0PDDASSgIjhbmcRT4vfMe2gRTeMISdezirXkbzGFKAKvjhQdtF+y2\n3y/KIpHDJeyesTKaAdOCAcFj2G/V3JucXNhxrrwgFhHHqBGET0c+BDTh/9DkX2M7\nav4hSmkdGGma2qsFdc1LzfWEwrN6Izqv4VGAFxSbhTL6/eyAxOc9jqbho3jVn9Ix\nXSpLsI64LwImJWPBCigy0Hoo9PMxyBtocKygDaK9Ii79KCF1cvIUaDZY1nu6Wns9\nknN21vR/AgMBAAECggEAOEFLVHAAcsZ9rMzirBnkpEer8/TElrQlAb1omlv9co9m\nOp80CFNv9r/PkeDKzYe/mt8aJjGwBvsZ9+Dop2EwNN/0of+FaOnZsEfvq2x4OklL\nnS+/SECBVAaVlpNxqSVCFZ4SdifY/arS8xpMwQMYafjBsvgxx7iMKpyUoSwRkb+l\nQtMagdhTEvJl7QwLnCpLgGFWs/3GjG8M5RD8CdHjGqxTaigYOkjU6bD00csIHkbI\nGveP585Qnf1rSbjZ83blk2S6gRqb9+OW4J8Z5Okwm4Dmb3LXkHgGCoVNT6f1sFsZ\nhsm1L8h7gztJwVmpoNTSDr4xQKiXQRGwb4KRfoHuMQKBgQDv730N4itlFadYxZdw\nktskJhjKs4N8LRCO6dy7uoU1GNIuiy+xFXhcGNSSnSM6JarbRZaVU0H4qtd9KtZ0\nl0fIO6jZLTQKyDJJEZifVYEKFXW811yfYBtvObh00gt40/26dajqct2oulIQxzq6\n7NVpa9EEdEaCRq2kTa+c8SI60wKBgQDqD6MdUgV5S3vmn4KW4uxT60ZtucvWT/H7\nOJNzvjT3YdeMhKG1gbB/wOn+W5tNMj5zzOH7Zngu+fCATHNU/ndohAp0cas3itw8\nIpIlNRR45Vvdcjn19Ml0qVh87oS9O6B9njCXC56jKKOAc5kWjgA6VsHJFEYBh8SU\nYe7TdZk8JQKBgEE9gWdxBBOsW6CLua3mgKfHpB4ZybrOFh6GAHsbMHVLlnsJZaJl\nECEar1JeX+HDtD2DInrf9KRE7+sc5ss1B1OuxS6oV+pGnUW4/yL0AO5Y/3alqI29\neDg6HanGI1BrdCZrL87wBM2IPCBLy/BfzXeo1WC8rR9nUHfIl+O4vXH5AoGBANgr\nDvuyV+nZRBoP8XzHIXqzzTzjnpVVCmh5rPz1i1d6HqfhirPmjgq/MZzAICNgpvsu\nGvujfJXuMidb9BxoVAHMCRfYL0hBz/sd9pm0dy7crUZNC6jTpgc/q8DeTOu0GRpL\nMhceHSoVC0RD/vwss5stqxW5ypn5OR3NgNP9RUOdAoGBALglxCsn4/O3aDB4CotP\nbzdQWSLneFXEUz3iQsTIvdWMUnT7onwWVkECD1DmcpngFy+/b2wEHp4uOrKvb5Nx\nLbrzpppHTBOmtEnh076T5K3JtP+ZgdmxgkjX3csRoQBk1VhdK+l1Cx1j9krct9rB\nLpDPBYw2Uyt/OucarZjmMf56\n-----END PRIVATE KEY-----\n",
+          "client_email": "firebase-adminsdk-nkdhd@hanbaik.iam.gserviceaccount.com",
+          "client_id": "103946102534201211018",
+          "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+          "token_uri": "https://oauth2.googleapis.com/token",
+          "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+          "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-nkdhd%40hanbaik.iam.gserviceaccount.com"
+        }
+
+        cred = credentials.Certificate(secret)
+        firebase_admin.initialize_app(cred,{
+            'databaseURL': "https://hanbaik-default-rtdb.firebaseio.com/"
+        })
+    print(db)
+
+    password=db.reference().get()['users']['password']
+    print(password)
+    id = db.reference().get()['users']['id']
+    print("id:",id,'password:',password)
+    # ref=db.reference().get()
+    # result_password=ref['users']
+
+    return id,password
+
 
 class Thread(QThread):
     # 초기화 메서드 구현
-    def __init__(self, parent,file_path,store_name,api_id,api_pw):  # parent는 WndowClass에서 전달하는 self이다.(WidnowClass의 인스턴스)
+    def __init__(self, parent,file_path,store_name,api_id,api_pw,start_row,end_row):  # parent는 WndowClass에서 전달하는 self이다.(WidnowClass의 인스턴스)
         super().__init__(parent)
         self.parent = parent  # self.parent를 사용하여 WindowClass 위젯을 제어할 수 있다.
         self.running_flag=True
@@ -279,6 +317,9 @@ class Thread(QThread):
         self.store_name=store_name
         self.api_id=api_id
         self.api_pw=api_pw
+        self.start_row=start_row
+        self.end_row=end_row
+
 
 
     def run(self):
@@ -308,13 +349,18 @@ class Thread(QThread):
 
 
                         for index, info in enumerate(info_list):
-                            # print("작동여부:",self.running_flag)
+                            if index<self.start_row or index>self.end_row:
+                                continue
+
                             if self.running_flag==False:
                                 break
-                            # info = [productNo, name, url_catalog, url_target, price_low, price_tic, switch]
                             productNo = info[0]
+                            if productNo=="":
+                                continue
                             name = info[1]
                             url = info[2]
+                            if url=="":
+                                continue
                             url_target=info[3]
                             price_low = info[4]
                             price_tic = info[5]
@@ -330,15 +376,9 @@ class Thread(QThread):
 
                             nownow = datetime.datetime.now()
                             nownow = nownow.strftime("%Y%m%d_%H%M")
-                            text="{}번째 상품 크롤링 중.. 번호 : {} / {}".format(index+1,productNo,name)
-                            # self.parent.lineEdit.setText(text)
+                            text="{}번째 상품 크롤링 중.. 번호 : {} / {}".format(index+2,productNo,name)
 
-                            # self.parent.progressBar.setValue(self.num)
-                            # self.num=self.num+self.diff
                             print(text)
-                            # self.parent.textEdit.append(text)
-
-                            # info = [productNo, name, url_catalog, switch, price_low]
                             try:
                                 least_price, second_price, is_first = get_catalog_price(url,self.store_name,exception_list)
                             except:
@@ -466,27 +506,53 @@ class Example(QMainWindow,Ui_MainWindow):
         self.file_path=""
         self.running_flag=True
         QApplication.processEvents()
-
-
-
+        self.first_flag=True
+        self.lineEdit.setText("hanbaik0422")
+        self.lineEdit_6.setText("gksqor1004")
+        self.login_flag=False
+        self.lineEdit_7.setText("1")
+        self.lineEdit_8.setText("999999")
 
 
     def start(self):
-        self.api_id=self.lineEdit_4.text()
-        self.api_pw=self.lineEdit_5.text()
-        self.file_path = self.lineEdit_3.text()
-        self.store_name=self.lineEdit_2.text()
-        print("11")
-        if len(self.file_path)==0:
-            QMessageBox.information(self, "에러", "엑셀 파일을 Import 하세요")
+        self.start_row=int(self.lineEdit_7.text())-2
+        self.end_row = int(self.lineEdit_8.text())-2
+
+        if self.login_flag==True:
+            self.api_id=self.lineEdit_4.text()
+            self.api_pw=self.lineEdit_5.text()
+            self.file_path = self.lineEdit_3.text()
+            self.store_name=self.lineEdit_2.text()
+            print("11")
+            if len(self.file_path)==0:
+                QMessageBox.information(self, "에러", "엑셀 파일을 Import 하세요")
+            else:
+                self.x=Thread(self, self.file_path,self.store_name,self.api_id,self.api_pw,self.start_row,self.end_row)
+                self.x.start()
         else:
-            self.x=Thread(self, self.file_path,self.store_name,self.api_id,self.api_pw)
-            self.x.start()
+            QMessageBox.information(self, "에러", "로그인에 성공 후 실행하세요")
     def stop(self):
         self.running_flag=False
         # self.x = Thread(self, self.file_path,self.clientid,self.clientkey)
         # self.x.stop()
         self.x.terminate()
+    def on_login(self):
+
+        firebase_id,firebase_password=get_key(self.first_flag)
+
+        self.first_flag = False
+        insert_id = self.lineEdit.text()
+        insert_pw = self.lineEdit_6.text()
+
+
+        if firebase_id==insert_id and firebase_password==insert_pw:
+            print("로그인에 성공하였습니다.")
+            self.login_flag=True
+
+        if self.login_flag==True:
+            self.textEdit.append("로그인에 성공 하였습니다.")
+        else:
+            self.textEdit.append("로그인에 실패 하였습니다.")
     def setSlot(self):
         pass
     def setIndex(self,index):
@@ -516,4 +582,5 @@ if __name__ == '__main__':
     app = QApplication(sys.argv)
     ex = MyApp()
     sys.exit(app.exec_())
+
 
