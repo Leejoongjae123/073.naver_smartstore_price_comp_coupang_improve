@@ -187,18 +187,22 @@ def load_excel(file_path):
     print("info_list:",info_list)
     return info_list
 def get_catalog_price(url, store_name,exception_list):
+    # print("aaaa")
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"}
 
 
     res = requests.get(url, headers=headers)
     res.raise_for_status()
-    position_fr = res.text.find("{")
-    position_rr = res.text.rfind("}")
-    result_raw = res.text[position_fr:position_rr + 1]
+    soup=BeautifulSoup(res.text,'lxml')
+    scriptTag=soup.find("script",attrs={'id':'__NEXT_DATA__'})
+    # print(scriptTag)
+    position_fr = str(scriptTag).find("{")
+    position_rr = str(scriptTag).rfind("}")
+    result_raw = str(scriptTag)[position_fr:position_rr + 1]
     result = json.loads(result_raw)
     result_list = result['props']['pageProps']['dehydratedState']['queries']
-
+    # print(result_list)
     mall_total_list = []
     # mall_useless=['11번가','G마켓','옥션','쿠팡','위메프','롯데','템스윈공식몰','인터파크','인터파크쇼핑']
     mall_useless=[]
@@ -267,7 +271,7 @@ def load_store(file_path):
     info_list = []
     for i in range(2, no_row + 1):
         # print(i, "번째 행 정보 가져오는 중...")
-        storeName = ws.cell(row=i, column=13).value
+        storeName = ws.cell(row=i, column=16).value
         if storeName == "" or storeName == None:
             break
         info = storeName
@@ -306,8 +310,8 @@ def get_key(first_flag):
 
     return id,password
 
-
 class Thread(QThread):
+    user_signal = pyqtSignal(str)  # 사용자 정의 시그널 2 생성
     # 초기화 메서드 구현
     def __init__(self, parent,file_path,store_name,api_id,api_pw,start_row,end_row):  # parent는 WndowClass에서 전달하는 self이다.(WidnowClass의 인스턴스)
         super().__init__(parent)
@@ -320,8 +324,6 @@ class Thread(QThread):
         self.start_row=start_row
         self.end_row=end_row
 
-
-
     def run(self):
 
         while True:
@@ -332,57 +334,74 @@ class Thread(QThread):
 
             # -----------------실행부위-------------
             while True:
-                try:
-                    clock_now = datetime.datetime.now()
-                    clock_now_hour = clock_now.strftime("%H")
-                    clock_now_minute = clock_now.strftime("%M")
-                    clock_now_second = clock_now.strftime("%S")
-                    print("현재시간: {}시 {}분 {}초".format(clock_now_hour, clock_now_minute, clock_now_second))
-                    info_list = load_excel(self.file_path)
-                    print("엑셀읽어오기완료")
-                    if int(clock_now_minute):
-                        print("조정시작")
+                clock_now = datetime.datetime.now()
+                clock_now_hour = clock_now.strftime("%H")
+                clock_now_minute = clock_now.strftime("%M")
+                clock_now_second = clock_now.strftime("%S")
+                print("현재시간: {}시 {}분 {}초".format(clock_now_hour, clock_now_minute, clock_now_second))
+                info_list = load_excel(self.file_path)
+                print("엑셀읽어오기완료")
+                if int(clock_now_minute):
+                    print("조정시작")
 
-                        # self.diff=int(1/len(info_list)*100)
-                        # self.num=0
-                        exception_list=load_store(self.file_path)
+                    # self.diff=int(1/len(info_list)*100)
+                    # self.num=0
+                    exception_list=load_store(self.file_path)
 
 
-                        for index, info in enumerate(info_list):
+                    for index, info in enumerate(info_list):
+                        try:
+
                             if index<self.start_row or index>self.end_row:
                                 continue
 
                             if self.running_flag==False:
                                 break
+
                             productNo = info[0]
-                            if productNo=="":
-                                continue
                             name = info[1]
+                            text = "엑셀 {}번째 행 상품 확인중(번호:{} / 이름:{})".format(index + 2, productNo, name)
+                            self.user_signal.emit(text)
+
+                            if productNo=="":
+                                text = "통과(△)"
+                                self.user_signal.emit(text)
+                                continue
+
                             url = info[2]
                             if url=="":
+                                text = "통과(△)"
+                                self.user_signal.emit(text)
                                 continue
                             url_target=info[3]
                             price_low = info[4]
                             price_tic = info[5]
                             switch = info[6]
 
+
+
                             if switch==0:
+                                text = "통과(△)"
+                                self.user_signal.emit(text)
                                 print("조정안하는 상품 스킵함")
                                 continue
 
                             if url == "" or url == None:
+                                text = "통과(△)"
+                                self.user_signal.emit(text)
                                 print("url없어서 넘어감")
                                 continue
 
                             nownow = datetime.datetime.now()
                             nownow = nownow.strftime("%Y%m%d_%H%M")
-                            text="{}번째 상품 크롤링 중.. 번호 : {} / {}".format(index+2,productNo,name)
 
                             print(text)
                             try:
                                 least_price, second_price, is_first = get_catalog_price(url,self.store_name,exception_list)
                             except:
                                 print("카탈로그 조회 에러로 건너뜀")
+                                text = "통과(△)"
+                                self.user_signal.emit(text)
                                 print("=================================")
                                 time.sleep(0.5)
                                 continue
@@ -393,6 +412,8 @@ class Thread(QThread):
                                 get_token(price_low,productNo,self.api_id,self.api_pw)
                             except:
                                 print("토큰 발급 에러로 건너뜀")
+                                text = "통과(△)"
+                                self.user_signal.emit(text)
                                 print("=================================")
                                 time.sleep(0.5)
                                 continue
@@ -420,50 +441,77 @@ class Thread(QThread):
                                         if second_price>current_price+10:
                                             print("2위 -10원으로 변경2")
                                             get_token(second_price - price_tic, productNo,self.api_id,self.api_pw)
+                                            time.sleep(0.2)
                                             change_price(productNo)
+                                            text = "1위(●)"
+                                            self.user_signal.emit(text)
                                         else:
                                             print("변경해당없음1")
                                     elif current_price>price_low:
                                         if current_price==second_price-price_tic:
                                             print("가격 기 지정 완료")
+                                            text = "1위(●)"
+                                            self.user_signal.emit(text)
                                         elif current_price!=second_price-price_tic:
                                             print("2위 -10원으로 변경1")
                                             get_token(second_price-price_tic, productNo,self.api_id,self.api_pw)
+                                            time.sleep(0.2)
                                             change_price(productNo)
                                             print("변경완료")
+                                            text = "1위(●)"
+                                            self.user_signal.emit(text)
                                     elif current_price==price_low:
                                         if second_price>=current_price+price_tic:
                                             print("2위 -10원으로 변경2")
                                             get_token(second_price - price_tic, productNo,self.api_id,self.api_pw)
+                                            time.sleep(0.2)
                                             change_price(productNo)
+                                            text = "현재 최저가 ●"
+                                            self.user_signal.emit(text)
                                         else:
                                             print("하한가라 변경안함")
+                                            text = "하한가(X)"
+                                            self.user_signal.emit(text)
                                     else:
                                         print("하한가 보다 낮아서 상향함")
                                         get_token(price_low, productNo,self.api_id,self.api_pw)
+                                        time.sleep(0.2)
                                         change_price(productNo)
                                         print("변경완료")
+                                        text = "하한가(X)"
+                                        self.user_signal.emit(text)
 
                                 elif is_first == False:
                                     if least_price==10 and price_low<=10:
                                         if second_price>current_price+10:
-                                            print("2위 틱으로 변경2")
+                                            print("2위 -틱으로 변경2")
                                             get_token(second_price - price_tic, productNo,self.api_id,self.api_pw)
+                                            time.sleep(0.2)
                                             change_price(productNo)
+                                            text = "1위(●)"
+                                            self.user_signal.emit(text)
                                         else:
                                             print("10원유지")
                                             get_token(10, productNo,self.api_id,self.api_pw)
+                                            time.sleep(0.2)
                                             print("가격변경시도")
                                             change_price(productNo)
                                             print("변경완료")
+                                            text = "1위(●)"
+                                            self.user_signal.emit(text)
                                     elif current_price>price_low:
                                         print("1위 뺏기")
                                         if least_price-price_tic<=price_low: # 1위탈환할 때 하한가 보다 낮으면 하한가로 셋팅
                                             print("하한가까지 밖에 못 내려감")
                                             price_change=price_low
+                                            text = "하한가(X)"
+                                            self.user_signal.emit(text)
                                         else:
                                             price_change = least_price - price_tic
+                                            text = "1위(●)"
+                                            self.user_signal.emit(text)
                                         get_token(price_change, productNo, self.api_id, self.api_pw)
+                                        time.sleep(0.2)
                                         # print("토큰 발행완료")
                                         change_price(productNo)
                                         print("변경완료")
@@ -471,23 +519,37 @@ class Thread(QThread):
                                         if second_price>current_price+price_tic:
                                             print("2위 -틱으로 변경2")
                                             get_token(second_price - price_tic, productNo,self.api_id,self.api_pw)
+                                            time.sleep(0.2)
                                             change_price(productNo)
+                                            text = "1위(●)"
+                                            self.user_signal.emit(text)
                                         else:
                                             print("하한가라 변경안함")
+                                            text = "하한가(X)"
+                                            self.user_signal.emit(text)
                                     else:
                                         print("하한가보다 낮아서 상향함")
                                         get_token(price_low, productNo,self.api_id,self.api_pw)
+                                        time.sleep(0.2)
                                         change_price(productNo)
                                         print("변경완료")
+                                        text = "하한가(X)"
+                                        self.user_signal.emit(text)
 
-                            time.sleep(0.5)
+                            time.sleep(0.6)
                             print("===================================")
-                        if self.running_flag==False:
-                            break
-                    time.sleep(1)
-                except:
-                    print('토큰 에러로 한텀 쉬기')
-                    time.sleep(5)
+                        except:
+                            print("에러발생으로 건너뛰기")
+                            text = "에러(△)"
+                            self.user_signal.emit(text)
+                            time.sleep(1)
+
+
+
+                    if self.running_flag==False:
+                        break
+                time.sleep(1)
+
 
     def stop(self):
         self.running_flag=False
@@ -528,6 +590,7 @@ class Example(QMainWindow,Ui_MainWindow):
                 QMessageBox.information(self, "에러", "엑셀 파일을 Import 하세요")
             else:
                 self.x=Thread(self, self.file_path,self.store_name,self.api_id,self.api_pw,self.start_row,self.end_row)
+                self.x.user_signal.connect(self.slot1)  # 사용자 정의 시그널2 슬롯 Connect
                 self.x.start()
         else:
             QMessageBox.information(self, "에러", "로그인에 성공 후 실행하세요")
@@ -536,6 +599,9 @@ class Example(QMainWindow,Ui_MainWindow):
         # self.x = Thread(self, self.file_path,self.clientid,self.clientkey)
         # self.x.stop()
         self.x.terminate()
+
+    def slot1(self, data1):  # 사용자 정의 시그널1에 connect된 function
+        self.textEdit.append(str(data1))
     def on_login(self):
 
         firebase_id,firebase_password=get_key(self.first_flag)
@@ -566,9 +632,9 @@ class Example(QMainWindow,Ui_MainWindow):
         self.lineEdit_3.setText(fname[0])
         wb=openpyxl.load_workbook(fname[0])
         ws=wb.active
-        self.id=ws.cell(row=2,column=9).value
-        self.pw=ws.cell(row=2,column=10).value
-        self.store_name = ws.cell(row=2, column=11).value
+        self.id=ws.cell(row=2,column=12).value
+        self.pw=ws.cell(row=2,column=13).value
+        self.store_name = ws.cell(row=2, column=14).value
         self.lineEdit_4.setText(self.id)
         self.lineEdit_5.setText(self.pw)
         self.lineEdit_2.setText(self.store_name)
